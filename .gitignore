@@ -1,6 +1,7 @@
 # .gitignore
 
 venv/
+data/
 __pycache__/
 *.pyc
 *.pyo
@@ -8,4 +9,4 @@ __pycache__/
 *.db
 .env
 *.pth
-
+bfg.jar
