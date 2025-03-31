@@ -1,5 +1,9 @@
  # app/streamlit_app.py
 
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import streamlit as st
 import numpy as np
 from streamlit_drawable_canvas import st_canvas
@@ -9,6 +13,10 @@ import torch.nn.functional as F
 from datetime import datetime
 import psycopg2
 import os
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 # Force Streamlit to use port 8080 for Railway
 os.environ["PORT"] = "8080"
@@ -19,15 +27,17 @@ model = MNISTClassifier()
 model.load_state_dict(torch.load("model/model.pth", map_location=torch.device('cpu')))
 model.eval()
 
-# --- DB Connection (placeholder, to be filled with Railway env vars) ---
-def get_db_conn():
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        port=os.getenv("DB_PORT", 5432)
-    )
+
+# === DB Connection Helper ===
+def get_db_connection():
+    try:
+        url = os.getenv("DATABASE_URL")
+        conn = psycopg2.connect(url, sslmode='require')
+        return conn
+    except Exception as e:
+        st.error(f"❌ DB connection failed: {e}")
+        return None
+
 
 # --- UI ---
 st.set_page_config(page_title="Digit Recognizer")
@@ -68,7 +78,7 @@ if pred_digit is not None:
 
     if st.button("Submit"):
         try:
-            conn = get_db_conn()
+            conn = get_db_connection()
             cur = conn.cursor()
             cur.execute("""
                 INSERT INTO predictions (timestamp, predicted, label)
@@ -84,7 +94,7 @@ if pred_digit is not None:
 # --- Display history ---
 st.markdown("## History")
 try:
-    conn = get_db_conn()
+    conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT timestamp, predicted, label FROM predictions ORDER BY timestamp DESC LIMIT 10;")
     rows = cur.fetchall()
@@ -94,3 +104,26 @@ try:
 except Exception as e:
     st.warning("Could not load history.")
 
+# === One-time table creation ===
+def initialize_db():
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS predictions (
+                    id SERIAL PRIMARY KEY,
+                    timestamp TIMESTAMP NOT NULL,
+                    predicted INTEGER NOT NULL,
+                    label INTEGER
+                );
+            """)
+            conn.commit()
+            cur.close()
+            conn.close()
+            st.success("✅ Database table initialized successfully.")
+        except Exception as e:
+            st.error(f"❌ DB Init Failed: {e}")
+
+# Run once to initialize DB
+initialize_db()
