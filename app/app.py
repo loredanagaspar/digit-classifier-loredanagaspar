@@ -94,7 +94,6 @@ def log_prediction(ts, pred, true_label, confidence):
     try:
         print(f"📥 log_prediction() called")
         print(f"Inserting into DB: {ts}, {pred}, {true_label}, {confidence}")
-
         conn = psycopg2.connect(
             dbname=DB_NAME,
             user=DB_USER,
@@ -103,9 +102,10 @@ def log_prediction(ts, pred, true_label, confidence):
             port=DB_PORT
         )
         cur = conn.cursor()
-        print(f"Inserting into DB: {ts}, {pred}, {true_label}, {confidence}")
-        cur.execute("INSERT INTO predictions (timestamp, predicted, true_label, confidence) VALUES (%s, %s, %s, %s)",
-            (ts, pred, true_label, confidence))
+        cur.execute(
+            "INSERT INTO predictions (timestamp, predicted, true_label, confidence) VALUES (%s, %s, %s, %s)",
+            (ts, pred, true_label, confidence)
+        )
         conn.commit()
         cur.close()
         conn.close()
@@ -174,8 +174,9 @@ canvas_result = st_canvas(
     key="canvas",
 )
 
-# Predict button
-if st.button("Predict"):
+true_label = st.number_input("Enter the true label (0-9):", min_value=0, max_value=9, step=1)
+
+if st.button("Predict & Submit"):
     if canvas_result.image_data is not None:
         img = Image.fromarray((canvas_result.image_data[:, :, 0]).astype('uint8'))
         img = transform(img).unsqueeze(0).to(device)
@@ -186,20 +187,12 @@ if st.button("Predict"):
             pred = prob.argmax(dim=1).item()
             confidence = prob.max().item()
 
+        ts = datetime.datetime.now().isoformat()
         st.success(f"Prediction: {pred}  |  Confidence: {confidence:.2f}")
-
-        true_label = st.number_input("Enter the true label (0-9):", min_value=0, max_value=9, step=1)
-
-        if st.button("Submit Label"):
-            st.write("📌 Submit button clicked")
-            ts = datetime.datetime.now().isoformat()
-            st.write(f"📋 Logging: {ts}, {pred}, {true_label}, {confidence}")
-            logging.basicConfig(level=logging.INFO)
-            logging.info(f"Submitting: {pred}, {true_label}, {confidence}")
-            st.info("📤 Attempting to log prediction...")
-            log_prediction(ts, pred, true_label, confidence)
-            st.success("✅ Prediction logged to database.")
-            st.write(f"{ts} | Prediction: {pred} | True Label: {true_label} | Confidence: {confidence:.2f}")
+        st.write(f"📋 Logging: {ts}, {pred}, {true_label}, {confidence:.2f}")
+        log_prediction(ts, pred, true_label, confidence)
+    else:
+        st.warning("Please draw a digit first.")
 
 # View recent predictions
 with st.sidebar:
