@@ -100,6 +100,7 @@ def log_prediction(ts, pred, true_label, confidence):
             port=DB_PORT
         )
         cur = conn.cursor()
+        print(f"Inserting into DB: {ts}, {pred}, {true_label}, {confidence}")
         cur.execute("INSERT INTO predictions (timestamp, predicted, true_label, confidence) VALUES (%s, %s, %s, %s)",
             (ts, pred, true_label, confidence))
         conn.commit()
@@ -188,6 +189,8 @@ if st.button("Predict"):
             ts = datetime.datetime.now().isoformat()
             logging.basicConfig(level=logging.INFO)
             logging.info(f"Submitting: {pred}, {true_label}, {confidence}")
+            st.info("📤 Attempting to log prediction...")
+
             log_prediction(ts, pred, true_label, confidence)
             st.success("✅ Prediction logged to database.")
             st.write(f"{ts} | Prediction: {pred} | True Label: {true_label} | Confidence: {confidence:.2f}")
