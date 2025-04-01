@@ -191,11 +191,12 @@ if st.button("Predict"):
         true_label = st.number_input("Enter the true label (0-9):", min_value=0, max_value=9, step=1)
 
         if st.button("Submit Label"):
+            st.write("📌 Submit button clicked")
             ts = datetime.datetime.now().isoformat()
+            st.write(f"📋 Logging: {ts}, {pred}, {true_label}, {confidence}")
             logging.basicConfig(level=logging.INFO)
             logging.info(f"Submitting: {pred}, {true_label}, {confidence}")
             st.info("📤 Attempting to log prediction...")
-
             log_prediction(ts, pred, true_label, confidence)
             st.success("✅ Prediction logged to database.")
             st.write(f"{ts} | Prediction: {pred} | True Label: {true_label} | Confidence: {confidence:.2f}")
