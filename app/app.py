@@ -13,6 +13,7 @@ import psycopg2
 import os
 import logging
 import pandas as pd
+from urllib.parse import urlparse
 
 # CNN model class (must match training)
 class CNN(nn.Module):
@@ -50,14 +51,20 @@ transform = transforms.Compose([
     transforms.Normalize((0.1307,), (0.3081,))
 ])
 
-# PostgreSQL connection
-DB_NAME = os.getenv("POSTGRES_DB")
-DB_USER = os.getenv("POSTGRES_USER")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-DB_HOST = os.getenv("POSTGRES_HOST")
-DB_PORT = os.getenv("POSTGRES_PORT", 5432)
+# Parse DATABASE_URL
+DB_URL = os.getenv("DATABASE_URL")
+if not DB_URL:
+    st.error("❌ DATABASE_URL is not set.")
+    st.stop()
 
-def log_prediction(ts, pred, true_label, confidence):
+parsed_url = urlparse(DB_URL)
+DB_NAME = parsed_url.path[1:]
+DB_USER = parsed_url.username
+DB_PASSWORD = parsed_url.password
+DB_HOST = parsed_url.hostname
+DB_PORT = parsed_url.port
+
+def ensure_predictions_table():
     try:
         conn = psycopg2.connect(
             dbname=DB_NAME,
@@ -76,10 +83,25 @@ def log_prediction(ts, pred, true_label, confidence):
                 confidence FLOAT
             )
         """)
-        cur.execute(
-            "INSERT INTO predictions (timestamp, predicted, true_label, confidence) VALUES (%s, %s, %s, %s)",
-            (ts, pred, true_label, confidence)
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+def log_prediction(ts, pred, true_label, confidence):
+    try:
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT
         )
+        cur = conn.cursor()
+        cur.execute("INSERT INTO predictions (timestamp, predicted, true_label, confidence) VALUES (%s, %s, %s, %s)",
+            (ts, pred, true_label, confidence))
         conn.commit()
         cur.close()
         conn.close()
@@ -105,7 +127,7 @@ def fetch_recent_predictions(limit=10):
     except Exception as e:
         st.error(f"❌ Could not fetch predictions: {e}")
         return []
-    
+
 def fetch_all_predictions():
     try:
         conn = psycopg2.connect(
@@ -124,10 +146,16 @@ def fetch_all_predictions():
     except Exception as e:
         st.error(f"❌ Could not fetch predictions: {e}")
         return pd.DataFrame()
-    
+
 # App UI
 st.title("🧠 MNIST Digit Recognizer")
 st.write("Draw a digit (0-9) below:")
+
+# DB Health Check
+if ensure_predictions_table():
+    st.sidebar.success("🟢 DB connected")
+else:
+    st.sidebar.error("🔴 DB connection failed")
 
 canvas_result = st_canvas(
     fill_color="#000000",
@@ -157,12 +185,12 @@ if st.button("Predict"):
         true_label = st.number_input("Enter the true label (0-9):", min_value=0, max_value=9, step=1)
 
         if st.button("Submit Label"):
-         ts = datetime.datetime.now().isoformat()
-         logging.basicConfig(level=logging.INFO)
-         logging.info(f"Submitting: {pred}, {true_label}, {confidence}")
-         log_prediction(ts, pred, true_label, confidence)
-         st.success("✅ Prediction logged to database.")
-         st.write(f"{ts} | Prediction: {pred} | True Label: {true_label} | Confidence: {confidence:.2f}")
+            ts = datetime.datetime.now().isoformat()
+            logging.basicConfig(level=logging.INFO)
+            logging.info(f"Submitting: {pred}, {true_label}, {confidence}")
+            log_prediction(ts, pred, true_label, confidence)
+            st.success("✅ Prediction logged to database.")
+            st.write(f"{ts} | Prediction: {pred} | True Label: {true_label} | Confidence: {confidence:.2f}")
 
 # View recent predictions
 with st.sidebar:
@@ -183,4 +211,3 @@ with st.sidebar:
         )
     else:
         st.info("No predictions logged yet.")
-
