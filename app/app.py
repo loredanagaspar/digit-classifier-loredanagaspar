@@ -92,6 +92,9 @@ def ensure_predictions_table():
 
 def log_prediction(ts, pred, true_label, confidence):
     try:
+        print(f"📥 log_prediction() called")
+        print(f"Inserting into DB: {ts}, {pred}, {true_label}, {confidence}")
+
         conn = psycopg2.connect(
             dbname=DB_NAME,
             user=DB_USER,
@@ -106,8 +109,10 @@ def log_prediction(ts, pred, true_label, confidence):
         conn.commit()
         cur.close()
         conn.close()
+        print("✅ DB insert complete")
         st.success("✅ Prediction logged successfully.")
     except Exception as e:
+        print(f"❌ DB insert failed: {e}")
         st.error(f"Database error: {e}")
 
 def fetch_recent_predictions(limit=10):
