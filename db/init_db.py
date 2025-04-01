@@ -1,13 +1,23 @@
 # init_db.py
+from dotenv import load_dotenv
+load_dotenv()
 
 import psycopg2
 import os
+from urllib.parse import urlparse
 
-DB_NAME = os.getenv("POSTGRES_DB")
-DB_USER = os.getenv("POSTGRES_USER")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-DB_HOST = os.getenv("POSTGRES_HOST")
-DB_PORT = os.getenv("POSTGRES_PORT", 5432)
+# Parse DATABASE_URL
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    raise Exception("❌ DATABASE_URL not set")
+
+parsed = urlparse(db_url)
+DB_NAME = parsed.path[1:]
+DB_USER = parsed.username
+DB_PASSWORD = parsed.password
+DB_HOST = parsed.hostname
+DB_PORT = parsed.port
+
 
 def create_predictions_table():
     try:
