@@ -83,5 +83,5 @@ if __name__ == "__main__":
         train(model, device, train_loader, optimizer, epoch)
         test(model, device, test_loader)
 
-    torch.save(model, MODEL_PATH)
+    torch.save(model.state_dict(), MODEL_PATH)
     print(f"Full model saved to {MODEL_PATH}")
