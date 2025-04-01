@@ -6,7 +6,7 @@ This project is an end-to-end machine learning application that classifies handw
 
 ##  Live Demo
 
-🔗 [Try the Live App](https://digit-classifier-loredanagaspar.up.railway.app)
+🔗 [Try the Live App](https://www.presizely.co.uk/)
 
 ---
 
