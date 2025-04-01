@@ -11,6 +11,8 @@ import numpy as np
 import datetime
 import psycopg2
 import os
+import logging
+import pandas as pd
 
 # CNN model class (must match training)
 class CNN(nn.Module):
@@ -81,9 +83,48 @@ def log_prediction(ts, pred, true_label, confidence):
         conn.commit()
         cur.close()
         conn.close()
+        st.success("✅ Prediction logged successfully.")
     except Exception as e:
         st.error(f"Database error: {e}")
 
+def fetch_recent_predictions(limit=10):
+    try:
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT
+        )
+        cur = conn.cursor()
+        cur.execute("SELECT timestamp, predicted, true_label, confidence FROM predictions ORDER BY id DESC LIMIT %s", (limit,))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return rows
+    except Exception as e:
+        st.error(f"❌ Could not fetch predictions: {e}")
+        return []
+    
+def fetch_all_predictions():
+    try:
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT
+        )
+        cur = conn.cursor()
+        cur.execute("SELECT timestamp, predicted, true_label, confidence FROM predictions ORDER BY id DESC")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return pd.DataFrame(rows, columns=["timestamp", "predicted", "true_label", "confidence"])
+    except Exception as e:
+        st.error(f"❌ Could not fetch predictions: {e}")
+        return pd.DataFrame()
+    
 # App UI
 st.title("🧠 MNIST Digit Recognizer")
 st.write("Draw a digit (0-9) below:")
@@ -116,8 +157,30 @@ if st.button("Predict"):
         true_label = st.number_input("Enter the true label (0-9):", min_value=0, max_value=9, step=1)
 
         if st.button("Submit Label"):
-            ts = datetime.datetime.now().isoformat()
-            log_prediction(ts, pred, true_label, confidence)
-            st.write(f"✅ Logged: {ts}, Predicted={pred}, True={true_label}, Confidence={confidence:.2f}")
+         ts = datetime.datetime.now().isoformat()
+         logging.basicConfig(level=logging.INFO)
+         logging.info(f"Submitting: {pred}, {true_label}, {confidence}")
+         log_prediction(ts, pred, true_label, confidence)
+         st.success("✅ Prediction logged to database.")
+         st.write(f"{ts} | Prediction: {pred} | True Label: {true_label} | Confidence: {confidence:.2f}")
+
+# View recent predictions
+with st.sidebar:
+    st.header("📊 Recent Predictions")
+    records = fetch_recent_predictions()
+    if records:
+        for row in records:
+            st.write(f"🕓 {row[0]} | Pred: {row[1]} | True: {row[2]} | Conf: {row[3]:.2f}")
+
+    df = fetch_all_predictions()
+    if not df.empty:
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇️ Download All Predictions (CSV)",
+            data=csv,
+            file_name="predictions.csv",
+            mime="text/csv",
+        )
     else:
-        st.warning("Please draw a digit first.")
+        st.info("No predictions logged yet.")
+
