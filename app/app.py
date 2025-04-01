@@ -14,6 +14,7 @@ import os
 import logging
 import pandas as pd
 from urllib.parse import urlparse
+import matplotlib.pyplot as plt
 
 # CNN model class (must match training)
 class CNN(nn.Module):
@@ -92,8 +93,6 @@ def ensure_predictions_table():
 
 def log_prediction(ts, pred, true_label, confidence):
     try:
-        print(f"📥 log_prediction() called")
-        print(f"Inserting into DB: {ts}, {pred}, {true_label}, {confidence}")
         conn = psycopg2.connect(
             dbname=DB_NAME,
             user=DB_USER,
@@ -109,10 +108,8 @@ def log_prediction(ts, pred, true_label, confidence):
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ DB insert complete")
         st.success("✅ Prediction logged successfully.")
     except Exception as e:
-        print(f"❌ DB insert failed: {e}")
         st.error(f"Database error: {e}")
 
 def fetch_recent_predictions(limit=10):
@@ -153,9 +150,47 @@ def fetch_all_predictions():
         st.error(f"❌ Could not fetch predictions: {e}")
         return pd.DataFrame()
 
+def fetch_total_count():
+    try:
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT
+        )
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM predictions")
+        count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        return count
+    except:
+        return 0
+
+def fetch_accuracy():
+    try:
+        conn = psycopg2.connect(
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT
+        )
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM predictions WHERE predicted = true_label")
+        correct = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM predictions")
+        total = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        return round((correct / total * 100), 2) if total > 0 else 0.0
+    except:
+        return 0.0
+
 # App UI
-st.title("🧠 MNIST Digit Recognizer")
-st.write("Draw a digit (0-9) below:")
+st.title("🔢 MNIST Digit Recognizer")
+st.write("Draw a digit (0–9) below:")
 
 # DB Health Check
 if ensure_predictions_table():
@@ -174,12 +209,12 @@ canvas_result = st_canvas(
     key="canvas",
 )
 
-true_label = st.number_input("Enter the true label (0-9):", min_value=0, max_value=9, step=1)
+true_label = st.number_input("Enter the true label (0–9):", min_value=0, max_value=9, step=1)
 
 if st.button("Predict & Submit"):
     if canvas_result.image_data is not None:
-        img = Image.fromarray((canvas_result.image_data[:, :, 0]).astype('uint8'))
-        img = transform(img).unsqueeze(0).to(device)
+        img_raw = Image.fromarray((canvas_result.image_data[:, :, 0]).astype('uint8'))
+        img = transform(img_raw).unsqueeze(0).to(device)
 
         with torch.no_grad():
             output = model(img)
@@ -188,8 +223,20 @@ if st.button("Predict & Submit"):
             confidence = prob.max().item()
 
         ts = datetime.datetime.now().isoformat()
-        st.success(f"Prediction: {pred}  |  Confidence: {confidence:.2f}")
-        st.write(f"📋 Logging: {ts}, {pred}, {true_label}, {confidence:.2f}")
+
+        if pred == true_label:
+            st.success(f"✅ Prediction: {pred}  |  Confidence: {confidence:.2f}")
+        else:
+            st.error(f"❌ Incorrect Prediction: {pred} | True: {true_label} | Conf: {confidence:.2f}")
+
+        # Show transformed image
+        st.subheader("🖼️ Preprocessed Input")
+        img_np = img.squeeze().cpu().numpy()
+        fig, ax = plt.subplots()
+        ax.imshow(img_np, cmap="gray")
+        ax.axis("off")
+        st.pyplot(fig)
+
         log_prediction(ts, pred, true_label, confidence)
     else:
         st.warning("Please draw a digit first.")
@@ -197,10 +244,17 @@ if st.button("Predict & Submit"):
 # View recent predictions
 with st.sidebar:
     st.header("📊 Recent Predictions")
+    total = fetch_total_count()
+    accuracy = fetch_accuracy()
+    st.markdown(f"**Total Predictions:** {total}")
+    st.markdown(f"**Accuracy:** {accuracy:.2f}%")
+
     records = fetch_recent_predictions()
     if records:
         for row in records:
-            st.write(f"🕓 {row[0]} | Pred: {row[1]} | True: {row[2]} | Conf: {row[3]:.2f}")
+            is_correct = "✅" if row[1] == row[2] else "❌"
+            confidence_tag = "⚠️" if row[3] < 0.6 else ""
+            st.write(f"{is_correct} {confidence_tag} {row[0]} | Pred: {row[1]} | True: {row[2]} | Conf: {row[3]:.2f}")
 
     df = fetch_all_predictions()
     if not df.empty:
