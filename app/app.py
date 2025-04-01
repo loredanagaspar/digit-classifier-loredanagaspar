@@ -210,11 +210,15 @@ canvas_result = st_canvas(
 )
 
 true_label = st.number_input("Enter the true label (0–9):", min_value=0, max_value=9, step=1)
+show_preview = st.checkbox("Show preprocessed input", value=True)
 
 if st.button("Predict & Submit"):
     if canvas_result.image_data is not None:
         img_raw = Image.fromarray((canvas_result.image_data[:, :, 0]).astype('uint8'))
         img = transform(img_raw).unsqueeze(0).to(device)
+
+        # Apply binary thresholding for stronger clarity
+        img = (img > 0.5).float()
 
         with torch.no_grad():
             output = model(img)
@@ -229,13 +233,13 @@ if st.button("Predict & Submit"):
         else:
             st.error(f"❌ Incorrect Prediction: {pred} | True: {true_label} | Conf: {confidence:.2f}")
 
-        # Show transformed image
-        st.subheader("🖼️ Preprocessed Input")
-        img_np = img.squeeze().cpu().numpy()
-        fig, ax = plt.subplots()
-        ax.imshow(img_np, cmap="gray")
-        ax.axis("off")
-        st.pyplot(fig)
+        if show_preview:
+            st.subheader("🖼️ Preprocessed Input")
+            img_np = img.squeeze().cpu().numpy()
+            fig, ax = plt.subplots(figsize=(2, 2))
+            ax.imshow(img_np, cmap="gray")
+            ax.axis("off")
+            st.pyplot(fig)
 
         log_prediction(ts, pred, true_label, confidence)
     else:
